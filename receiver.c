@@ -9,7 +9,7 @@
 
 #define PAYLOAD_SIZE 160
 #define RING_SIZE 2048
-#define PLAYOUT_MARGIN 0.0005
+#define PLAYOUT_MARGIN 0.002
 
 struct Frame {
     int seq;
@@ -146,6 +146,10 @@ int main(void) {
             int max_sent = (int)((now - t0) / 0.020);
             if (max_sent >= max_frames) max_sent = max_frames - 1;
 
+            // Scale thresholds dynamically with playout delay
+            double base_thresh_odd = (delay_ms * 0.5) / 1000.0;
+            double base_thresh_even = (delay_ms * 0.75) / 1000.0;
+
             for (int s = next_playout_seq; s <= max_sent; s++) {
                 int idx = s % RING_SIZE;
                 if (!rx_buffer[idx].present || rx_buffer[idx].seq != s) {
@@ -153,12 +157,12 @@ int main(void) {
                     double thresh;
                     if (s % 2 == 1) {
                         // Odd frame: no FEC, NACK quickly
-                        thresh = min_delay + 0.010;
-                        if (thresh < 0.020) thresh = 0.020;
+                        thresh = min_delay + 0.015;
+                        if (thresh < base_thresh_odd) thresh = base_thresh_odd;
                     } else {
                         // Even frame: wait for the next odd frame's FEC
                         thresh = min_delay + 0.035;
-                        if (thresh < 0.045) thresh = 0.045;
+                        if (thresh < base_thresh_even) thresh = base_thresh_even;
                     }
 
                     if (now - t_send > thresh) {
