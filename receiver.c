@@ -9,7 +9,7 @@
 
 #define PAYLOAD_SIZE 160
 #define RING_SIZE 2048
-#define PLAYOUT_MARGIN 0.002
+#define PLAYOUT_MARGIN 0.0005
 
 struct Frame {
     int seq;
@@ -153,8 +153,8 @@ int main(void) {
                     double thresh;
                     if (s % 2 == 1) {
                         // Odd frame: no FEC, NACK quickly
-                        thresh = min_delay + 0.015;
-                        if (thresh < 0.025) thresh = 0.025;
+                        thresh = min_delay + 0.010;
+                        if (thresh < 0.020) thresh = 0.020;
                     } else {
                         // Even frame: wait for the next odd frame's FEC
                         thresh = min_delay + 0.035;
