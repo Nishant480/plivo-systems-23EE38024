@@ -146,8 +146,7 @@ int main(void) {
             int max_sent = (int)((now - t0) / 0.020);
             if (max_sent >= max_frames) max_sent = max_frames - 1;
 
-            // Scale thresholds dynamically with playout delay
-            double base_thresh_unprotected = (delay_ms * 0.28) / 1000.0;
+            // Scale threshold only for protected frames
             double base_thresh_even = (delay_ms * 0.75) / 1000.0;
 
             for (int s = next_playout_seq; s <= max_sent; s++) {
@@ -157,8 +156,8 @@ int main(void) {
                     double thresh;
                     if (s % 3 == 2) {
                         // Unprotected frame: NACK quickly (no FEC recovery possible)
-                        thresh = min_delay + 0.010;
-                        if (thresh < base_thresh_unprotected) thresh = base_thresh_unprotected;
+                        thresh = min_delay + 0.015;
+                        if (thresh < 0.030) thresh = 0.030;
                     } else {
                         // Protected frame: wait for the next frame's FEC
                         thresh = min_delay + 0.035;
