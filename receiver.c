@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +38,9 @@ int main(void) {
         return 1;
     }
 
+    // Set input socket to non-blocking
+    fcntl(in_fd, F_SETFL, O_NONBLOCK);
+
     int out_fd = socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in player = {0};
     player.sin_family = AF_INET;
@@ -71,31 +75,12 @@ int main(void) {
 
     unsigned char buf[2048];
     while (next_playout_seq < max_frames) {
-        double now = get_time_sec();
-        double next_play_time = playout_start + next_playout_seq * 0.020 - PLAYOUT_MARGIN;
-        double next_check = last_nack_check + 0.005;
-
-        double timeout_sec = 0.005;
-        double time_to_play = next_play_time - now;
-        double time_to_check = next_check - now;
-
-        if (time_to_play < timeout_sec) timeout_sec = time_to_play;
-        if (time_to_check < timeout_sec) timeout_sec = time_to_check;
-        if (timeout_sec < 0.0) timeout_sec = 0.0;
-
-        fd_set fds;
-        FD_ZERO(&fds);
-        FD_SET(in_fd, &fds);
-
-        struct timeval tv;
-        tv.tv_sec = (long)timeout_sec;
-        tv.tv_usec = (long)((timeout_sec - tv.tv_sec) * 1000000.0);
-
-        int r = select(in_fd + 1, &fds, NULL, NULL, &tv);
-        now = get_time_sec();
-
-        if (r > 0 && FD_ISSET(in_fd, &fds)) {
+        // 1. Drain socket of all pending incoming packets (non-blocking)
+        for (;;) {
             ssize_t n = recvfrom(in_fd, buf, sizeof buf, 0, NULL, NULL);
+            if (n < 0) {
+                break; // socket is empty (EWOULDBLOCK / EAGAIN)
+            }
             if (n >= 164) {
                 unsigned int seq_u32 = ((unsigned int)buf[0] << 24) |
                                        ((unsigned int)buf[1] << 16) |
@@ -103,6 +88,7 @@ int main(void) {
                                        (unsigned int)buf[3];
                 int seq = (int)seq_u32;
                 if (seq >= next_playout_seq && seq < max_frames) {
+                    double now = get_time_sec();
                     double sent_time = t0 + seq * 0.020;
                     double delay = now - sent_time;
                     if (delay > 0.0 && delay < min_delay) {
@@ -133,10 +119,12 @@ int main(void) {
             }
         }
 
-        // Playout check
+        double now = get_time_sec();
+
+        // 2. Playout check
         while (next_playout_seq < max_frames) {
             double play_t = playout_start + next_playout_seq * 0.020 - PLAYOUT_MARGIN;
-            if (get_time_sec() < play_t) {
+            if (now < play_t) {
                 break;
             }
             int idx = next_playout_seq % RING_SIZE;
@@ -152,7 +140,7 @@ int main(void) {
             next_playout_seq++;
         }
 
-        // NACK check
+        // 3. NACK check
         if (now >= last_nack_check + 0.005) {
             last_nack_check = now;
             int max_sent = (int)((now - t0) / 0.020);
@@ -189,6 +177,28 @@ int main(void) {
                 }
             }
         }
+
+        // 4. Calculate sleep timeout
+        double next_play_time = playout_start + next_playout_seq * 0.020 - PLAYOUT_MARGIN;
+        double next_check = last_nack_check + 0.005;
+
+        double timeout_sec = 0.005;
+        double time_to_play = next_play_time - now;
+        double time_to_check = next_check - now;
+
+        if (time_to_play < timeout_sec) timeout_sec = time_to_play;
+        if (time_to_check < timeout_sec) timeout_sec = time_to_check;
+        if (timeout_sec < 0.0) timeout_sec = 0.0;
+
+        fd_set fds;
+        FD_ZERO(&fds);
+        FD_SET(in_fd, &fds);
+
+        struct timeval tv;
+        tv.tv_sec = (long)timeout_sec;
+        tv.tv_usec = (long)((timeout_sec - tv.tv_sec) * 1000000.0);
+
+        select(in_fd + 1, &fds, NULL, NULL, &tv);
     }
 
     return 0;
