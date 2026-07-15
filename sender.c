@@ -86,8 +86,8 @@ int main(void) {
                 memcpy(cache[idx].payload, buf + 4, PAYLOAD_SIZE);
                 cache[idx].last_sent_time = now;
 
-                if (seq % 2 == 1) {
-                    // Odd packet: piggyback previous packet if we have it
+                if (seq % 3 != 0) {
+                    // Piggyback previous frame if we have it (2 out of 3 packets carry FEC)
                     int prev_seq = seq - 1;
                     int prev_idx = prev_seq % RING_SIZE;
                     if (cache[prev_idx].valid && cache[prev_idx].seq == prev_seq) {
@@ -99,7 +99,6 @@ int main(void) {
                         sendto(out_fd, buf, (size_t)n, 0, (struct sockaddr *)&relay, sizeof relay);
                     }
                 } else {
-                    // Even packet: send normally
                     sendto(out_fd, buf, (size_t)n, 0, (struct sockaddr *)&relay, sizeof relay);
                 }
             }
