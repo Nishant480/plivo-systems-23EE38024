@@ -9,7 +9,7 @@
 
 #define PAYLOAD_SIZE 160
 #define RING_SIZE 2048
-#define PLAYOUT_MARGIN 0.002
+#define PLAYOUT_MARGIN 0.008
 
 struct Frame {
     int seq;
